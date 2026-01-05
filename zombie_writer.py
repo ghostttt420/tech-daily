@@ -106,6 +106,41 @@ def update_homepage(filename, title):
     else: content = content.replace("<body>", f"<body><ul>{new_link}</ul>")
     with open("index.html", "w") as f:
         f.write(content)
+def update_sitemap(filename):
+    """
+    Updates sitemap.xml so Google can find the new page.
+    """
+    sitemap_path = "sitemap.xml"
+    base_url = f"https://{os.environ.get('GITHUB_REPOSITORY_OWNER')}.github.io/{REPO_NAME}/"
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # XML Header
+    header = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    footer = '</urlset>'
+    
+    new_entry = f"""  <url>
+    <loc>{base_url}{filename}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>daily</changefreq>
+  </url>\n"""
+
+    # If sitemap doesn't exist, create it
+    if not os.path.exists(sitemap_path):
+        content = header + new_entry + footer
+    else:
+        with open(sitemap_path, "r") as f:
+            content = f.read()
+        
+        # Remove the footer, add the new entry, and put the footer back
+        if footer in content:
+            content = content.replace(footer, new_entry + footer)
+        else:
+            content = header + new_entry + footer # Rebuild if broken
+
+    with open(sitemap_path, "w") as f:
+        f.write(content)
+    print(f"🗺️ Added {filename} to Sitemap.")
+
 
 def main():
     # 1. Load the Hydra Heads (Seeds)
