@@ -12,7 +12,12 @@ SEEDS = [
     "call of duty mobile lag",
     "whatsapp not sending",
     "best graphics settings for",
-    "iphone battery draining fast"
+    "iphone battery draining fast",
+    "roblox error code 277 fix android",
+    ​"call of duty mobile lag fix low end device",
+    ​"how to fix black screen on samsung a12",
+    ​"instagram music not working nigeria region",
+    ​"free fire sensitivity settings for headshot 2026"
 ]
 
 def get_dynamic_model(api_key):
