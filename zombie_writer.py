@@ -17,7 +17,7 @@ SEEDS = [
     ​"call of duty mobile lag fix low end device",
     ​"how to fix black screen on samsung a12",
     ​"instagram music not working nigeria region",
-    ​"free fire sensitivity settings for headshot 2026"
+    ​"free fire sensitivity settings for headshot 2026",
 ]
 
 def get_dynamic_model(api_key):
