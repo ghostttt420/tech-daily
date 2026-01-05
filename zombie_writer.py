@@ -214,6 +214,8 @@ def main():
             f.write(full_html)
             
         update_homepage(filename, title)
+        update_sitemap(filename)
+
         print(f"✅ Published: {filename}")
     else:
         print("❌ Failed to generate content.")
