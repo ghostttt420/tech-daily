@@ -1,0 +1,37 @@
+name: Zombie-Publisher
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Every day at 8 AM UTC
+  workflow_dispatch: # Button to run manually
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Arise
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Libs
+        run: pip install requests
+
+      - name: Write Content
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python zombie_writer.py
+
+      - name: Publish to Web
+        run: |
+          git config --global user.name "Zombie-Bot"
+          git config --global user.email "bot@zombie.com"
+          git add .
+          git commit -m "🧟 New Article Published" || exit 0
+          git push
