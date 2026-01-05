@@ -20,10 +20,11 @@ def get_gemini_article(title):
     if not api_key:
         print("❌ CRITICAL: No API Key found in Secrets!")
         return None
-        
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     
-    # 1. The Prompt
+    # SYSTEM PATCH: Switched to 'gemini-1.5-flash-latest' which is more stable
+    # If this fails, we can try 'gemini-pro'
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    
     prompt = f"""
     Write a technical blog post titled '{title}'. 
     Format it in valid HTML (use <h2>, <p>, <ul>). 
@@ -32,7 +33,7 @@ def get_gemini_article(title):
     Tone: Helpful, technical, and clear.
     """
     
-    # 2. The Safety Bypass (Force the AI to answer)
+    # Safety Bypass settings
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "safetySettings": [
@@ -49,25 +50,26 @@ def get_gemini_article(title):
         r = requests.post(url, json=payload, headers=headers)
         data = r.json()
         
-        # 3. The Debugger (Check for valid response)
+        # Debugging: If it fails, print WHY
         if "error" in data:
             print(f"⚠️ API Error: {data['error']['message']}")
-            return None
-            
+            # Fallback: Try the older reliable 'gemini-pro' if flash fails
+            if "not found" in data['error']['message'] or "not supported" in data['error']['message']:
+                print("🔄 Falling back to 'gemini-pro' model...")
+                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+                r = requests.post(fallback_url, json=payload, headers=headers)
+                data = r.json()
+        
         if "candidates" not in data:
             print(f"⚠️ Unexpected Response: {data}")
             return None
             
-        # Check if the AI blocked it but didn't error out
-        if data['candidates'][0]['finishReason'] != "STOP":
-            print(f"⚠️ AI Blocked Content: {data['candidates'][0]['finishReason']}")
-            return None
-
         return data['candidates'][0]['content']['parts'][0]['text']
 
     except Exception as e:
         print(f"❌ Connection Error: {e}")
         return None
+
 
 def update_homepage(filename, title):
     if not os.path.exists("index.html"):
