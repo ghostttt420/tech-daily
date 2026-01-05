@@ -15,15 +15,52 @@ SEEDS = [
     "iphone battery draining fast"
 ]
 
+def get_dynamic_model(api_key):
+    """
+    Asks Google: 'What models can I use?' and picks the best one.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    try:
+        r = requests.get(url)
+        data = r.json()
+        
+        # Look for a model that supports 'generateContent'
+        valid_models = []
+        if 'models' in data:
+            for m in data['models']:
+                if 'generateContent' in m.get('supportedGenerationMethods', []):
+                    valid_models.append(m['name'])
+        
+        if not valid_models:
+            print(f"❌ No valid models found. Response: {data}")
+            return None
+            
+        # Prefer 'flash' models (fast/free), then 'pro', then whatever is left
+        chosen_model = next((m for m in valid_models if 'flash' in m), None)
+        if not chosen_model:
+            chosen_model = next((m for m in valid_models if 'pro' in m), valid_models[0])
+            
+        print(f"🧠 System selected model: {chosen_model}")
+        return chosen_model
+
+    except Exception as e:
+        print(f"❌ Failed to list models: {e}")
+        return None
+
 def get_gemini_article(title):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("❌ CRITICAL: No API Key found in Secrets!")
         return None
-    
-    # SYSTEM PATCH: Switched to 'gemini-1.5-flash-latest' which is more stable
-    # If this fails, we can try 'gemini-pro'
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+
+    # STEP 1: Find a valid model name dynamically
+    model_name = get_dynamic_model(api_key)
+    if not model_name:
+        return None
+
+    # STEP 2: Generate Content
+    # Note: model_name already contains 'models/', e.g., 'models/gemini-1.5-flash'
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
     
     prompt = f"""
     Write a technical blog post titled '{title}'. 
@@ -33,7 +70,6 @@ def get_gemini_article(title):
     Tone: Helpful, technical, and clear.
     """
     
-    # Safety Bypass settings
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "safetySettings": [
@@ -50,15 +86,9 @@ def get_gemini_article(title):
         r = requests.post(url, json=payload, headers=headers)
         data = r.json()
         
-        # Debugging: If it fails, print WHY
         if "error" in data:
             print(f"⚠️ API Error: {data['error']['message']}")
-            # Fallback: Try the older reliable 'gemini-pro' if flash fails
-            if "not found" in data['error']['message'] or "not supported" in data['error']['message']:
-                print("🔄 Falling back to 'gemini-pro' model...")
-                fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
-                r = requests.post(fallback_url, json=payload, headers=headers)
-                data = r.json()
+            return None
         
         if "candidates" not in data:
             print(f"⚠️ Unexpected Response: {data}")
@@ -69,7 +99,6 @@ def get_gemini_article(title):
     except Exception as e:
         print(f"❌ Connection Error: {e}")
         return None
-
 
 def update_homepage(filename, title):
     if not os.path.exists("index.html"):
@@ -99,7 +128,6 @@ def main():
     article_body = get_gemini_article(title)
     
     if article_body:
-        # Cleanup formatting
         article_body = article_body.replace("```html", "").replace("```", "")
         
         filename = title.lower().replace(" ", "-") + ".html"
@@ -135,7 +163,6 @@ def main():
         print(f"🧟 Successfully birthed: {filename}")
     else:
         print("❌ Failed to generate content.")
-        # If it fails, fail the workflow so we see Red X
         exit(1)
 
 if __name__ == "__main__":
