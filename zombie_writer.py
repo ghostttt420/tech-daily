@@ -10,47 +10,67 @@ from datetime import datetime
 # --- CONFIGURATION ---
 REPO_NAME = "tech-daily"
 GITHUB_USERNAME = os.environ.get('GITHUB_REPOSITORY_OWNER')
-# Your specific money link
+# Your Money Link
 AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1cd51effc10b"
 
-# --- 1. ROBUST RSS FETCHER ---
+# --- 1. ADVANCED RSS FETCHER (ANTI-BLOCK) ---
 def get_trending_topics():
-    """Fetches trends from multiple sources to avoid blocking"""
+    """Fetches trends using browser simulation and multiple Google endpoints"""
+    
     sources = [
-        "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US", # Priority: High CPM US Traffic
-        "https://www.theverge.com/rss/index.xml",  # Backup 1: Tech News
-        "https://feeds.feedburner.com/TechCrunch/" # Backup 2: Startups/Apps
+        # 1. Google Trends RSS (Standard)
+        "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US",
+        # 2. Google Trends Atom (Legacy - Often works when RSS fails)
+        "https://trends.google.com/trends/hottrends/atom/feed?pn=p1",
+        # 3. Backup: Tech News
+        "https://www.theverge.com/rss/index.xml",
+        # 4. Backup: Startups
+        "https://feeds.feedburner.com/TechCrunch/"
     ]
 
-    # Fake a real browser to prevent 429 Blocks
+    # Full Browser Headers to look like a real person
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://www.google.com/",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
     }
 
     for rss_url in sources:
         try:
-            print(f"🔌 Connecting to RSS: {rss_url}...")
+            print(f"🔌 Connecting to: {rss_url}...")
             r = requests.get(rss_url, headers=headers, timeout=10)
             
             if r.status_code == 200:
                 root = ET.fromstring(r.content)
-                # Extract titles. Google uses different XML structure than others, so we try both standard methods.
                 trends = []
-                for item in root.findall('.//item'):
-                    title = item.find('title').text
-                    trends.append(title)
+                
+                # Support both 'item' (RSS) and 'entry' (Atom) XML tags
+                items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
+                
+                for item in items:
+                    # Support both 'title' (RSS) and 'title' (Atom)
+                    title = item.find('title')
+                    if title is None:
+                        # Atom namespace handling
+                        title = item.find('{http://www.w3.org/2005/Atom}title')
+                    
+                    if title is not None and title.text:
+                        trends.append(title.text)
                 
                 if trends:
                     print(f"✅ Success! Found {len(trends)} topics from {rss_url}")
                     return trends
             else:
-                print(f"⚠️ Blocked by source ({r.status_code}). Trying next...")
+                print(f"⚠️ Blocked ({r.status_code}). Trying next...")
                 
         except Exception as e:
-            print(f"❌ Error connecting to {rss_url}: {e}")
+            print(f"❌ Error: {e}")
             continue
             
-    print("💀 All RSS feeds failed. Using emergency fallback.")
+    print("💀 All sources failed. Using emergency fallback.")
     return []
 
 def get_dynamic_model(api_key):
@@ -69,18 +89,16 @@ def get_gemini_article(title):
     if not api_key: return None
     model_name = get_dynamic_model(api_key)
     
-    # Prompt engineering to ensure "How-To" format
     prompt = f"""
     You are a technical writer. Write a blog post about: "{title}".
     
     IMPORTANT RULES:
     1. If the topic is a person or news event, ignore the news and write a guide on "How to fix/watch/access" it.
-    2. Use Markdown formatting.
+    2. Use Markdown formatting (##, -).
     3. Include a clear H1 title.
-    4. Include a troubleshooting section with bullet points.
     
     Structure:
-    - Introduction (What is the issue?)
+    - Introduction (The Issue)
     - 3 Common Causes
     - Step-by-Step Solution (Numbered list)
     - FAQ Section
@@ -107,7 +125,6 @@ def update_homepage(filename, title):
     entry = f'<li><span style="color:#666; font-size:0.8em;">[{date_str}]</span> <a href="{filename}"><strong>{title}</strong></a></li>'
     
     if not os.path.exists(index_path):
-        # Create fresh homepage if missing
         with open(index_path, "w") as f:
             f.write(f"""
             <!DOCTYPE html>
@@ -132,7 +149,6 @@ def update_homepage(filename, title):
             </html>
             """)
     else:
-        # Append to existing homepage
         with open(index_path, "r") as f: content = f.read()
         if "<ul>" in content:
             content = content.replace("<ul>", f"<ul>\n{entry}")
@@ -150,7 +166,6 @@ def update_sitemap(filename):
     <changefreq>daily</changefreq>
   </url>
 """
-    
     if not os.path.exists(sitemap_path):
         content = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{new_url_block}</urlset>'
     else:
@@ -164,7 +179,6 @@ def post_to_devto(title, content, original_url):
     api_key = os.environ.get("DEVTO_API_KEY")
     if not api_key: return
 
-    # Inject Ad Link into Dev.to version
     trap_content = f"{content}\n\n## ⚡ Quick Solution\n\n[**▶ CLICK HERE TO FIX THIS ERROR**]({AD_LINK})"
     
     url = "https://dev.to/api/articles"
@@ -196,12 +210,20 @@ def main():
     
     if tech_trends:
         raw_topic = random.choice(tech_trends)
-        topic = f"Fix {raw_topic}" # Turn news into a guide
+        # SMART TITLE LOGIC
+        if any(x in raw_topic.lower() for x in ['top', 'best', 'vs', 'review', 'list']):
+             topic = f"Guide: {raw_topic} Explained"
+        else:
+             topic = f"How to Fix {raw_topic} Error"
+             
     elif trends:
         raw_topic = random.choice(trends)
-        topic = f"How to Watch or Access {raw_topic}" # Turn generic trend into a guide
+        if any(x in raw_topic.lower() for x in ['top', 'best', 'vs']):
+             topic = f"Guide: {raw_topic} Review"
+        else:
+             topic = f"How to Watch or Access {raw_topic}"
     else:
-        topic = "How to Fix Android System WebView Crash" # Ultimate fallback
+        topic = "How to Fix Android System WebView Crash"
 
     print(f"🎯 Target Locked: {topic}")
     
@@ -255,12 +277,10 @@ def main():
         </html>
         """
         
-        # Save Files
         with open(filename, "w") as f: f.write(full_html)
         update_homepage(filename, topic)
         update_sitemap(filename)
         
-        # Mirror
         original_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/{filename}"
         post_to_devto(topic, article_md, original_url)
         
