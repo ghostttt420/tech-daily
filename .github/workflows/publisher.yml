@@ -21,7 +21,7 @@ jobs:
           python-version: '3.9'
 
       - name: Install Libs
-        run: pip install requests markdown
+        run: pip install requests markdown curl_cffi
 
       - name: Write Content
         env:
