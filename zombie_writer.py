@@ -1,10 +1,9 @@
+import requests
 import random
 import os
 import json
 import time
 import markdown
-import requests # Keep for Gemini/Dev.to interactions
-from curl_cffi import requests as crequests # The "Stealth" Browser
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -13,72 +12,50 @@ REPO_NAME = "tech-daily"
 GITHUB_USERNAME = os.environ.get('GITHUB_REPOSITORY_OWNER')
 AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1cd51effc10b"
 
-# --- 1. ENGINEERED TREND FETCHER (TLS SPOOFING) ---
+# --- 1. RELIABLE TECH SOURCES (No Google Blocking) ---
 def get_trending_topics():
-    print("🕵️ Attempting Stealth Connection to Google...")
-    
-    # We use Google's internal JSON API (Backdoor) instead of RSS
-    # This endpoint is often less rate-limited than the RSS feed.
-    google_json_url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
-    
-    try:
-        # IMPERSONATE CHROME 110
-        # This performs the SSL handshake exactly like a real browser
-        r = crequests.get(google_json_url, impersonate="chrome110", timeout=15)
-        
-        if r.status_code == 200:
-            # Google adds a ")]}',\n" prefix to prevent JSON hijacking. We must strip it.
-            clean_json = r.text.replace(")]}',\n", "")
-            data = json.loads(clean_json)
-            
-            # Extract trends from the nested JSON structure
-            trends = []
-            for day in data.get('default', {}).get('trendingSearchesDays', []):
-                for search in day.get('trendingSearches', []):
-                    query = search.get('title', {}).get('query')
-                    if query:
-                        trends.append(query)
-            
-            if trends:
-                print(f"✅ Google Hacked: Found {len(trends)} trends via JSON API")
-                return trends
-                
-    except Exception as e:
-        print(f"❌ Google Stealth Failed: {e}")
-
-    # --- FALLBACK SYSTEM (If Google still blocks us) ---
-    print("⚠️ Google defense active. Switching to backup feeds.")
-    backup_sources = [
-        "https://www.theverge.com/rss/index.xml",
-        "https://feeds.feedburner.com/TechCrunch/"
+    sources = [
+        "https://www.theverge.com/rss/index.xml",       # General Tech
+        "https://feeds.feedburner.com/TechCrunch/",     # Startups/Apps
+        "https://www.wired.com/feed/rss",               # Deep Tech/Culture
+        "https://feeds.arstechnica.com/arstechnica/index" # IT/Hardware
     ]
     
-    # Use standard requests for backups (TLS spoofing not needed for these)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    # Simple User-Agent is enough for RSS feeds
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    all_trends = []
     
-    for rss_url in backup_sources:
+    for rss_url in sources:
         try:
+            print(f"🔌 Checking Source: {rss_url}...")
             r = requests.get(rss_url, headers=headers, timeout=10)
             if r.status_code == 200:
                 root = ET.fromstring(r.content)
-                trends = []
+                # RSS Parsing
                 items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
                 for item in items:
                     title = item.find('title')
                     if title is None: title = item.find('{http://www.w3.org/2005/Atom}title')
-                    if title is not None and title.text: trends.append(title.text)
-                if trends: 
-                    print(f"✅ Backup Success: Found topics from {rss_url}")
-                    return trends
-        except: continue
+                    if title is not None and title.text:
+                        all_trends.append(title.text)
+        except Exception as e:
+            print(f"⚠️ Skipped {rss_url}: {e}")
+            continue
 
+    if all_trends:
+        print(f"✅ Success! Collected {len(all_trends)} potential topics.")
+        return all_trends
+    
     return []
 
-# --- AI & UTILS ---
+# --- AI SETUP ---
 def get_dynamic_model(api_key):
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     try:
-        r = requests.get(url) # Standard requests is fine here
+        r = requests.get(url)
         data = r.json()
         valid_models = [m['name'] for m in data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
         if not valid_models: return None
@@ -92,8 +69,19 @@ def get_gemini_article(title):
     
     prompt = f"""
     You are a technical writer. Write a blog post about: "{title}".
-    IMPORTANT: If this is news, ignore the news aspect and write a "How-To" guide related to it.
-    Use Markdown. Include H1, Intro, Causes, Steps, FAQ.
+    
+    IMPORTANT INSTRUCTIONS:
+    1. If the topic is news (e.g. "Apple released X"), write a guide on "How to use/update X".
+    2. If the topic is an error, write "How to Fix".
+    3. Use Markdown.
+    4. Make it look like a helpful tutorial.
+    
+    Structure:
+    - H1 Title
+    - Intro (What is happening?)
+    - Key Features / or / Common Causes
+    - Step-by-Step Guide
+    - Conclusion
     """
     
     url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
@@ -104,6 +92,7 @@ def get_gemini_article(title):
         return r.json()['candidates'][0]['content']['parts'][0]['text']
     except: return None
 
+# --- UTILS & HTML GENERATION ---
 def clean_filename(topic):
     clean = topic.lower().replace(":", "").replace("’", "").replace("'", "").replace('"', "")
     return clean.replace(" ", "-").replace("?", "").replace("/", "")[:50] + ".html"
@@ -144,7 +133,7 @@ def post_to_devto(title, content, original_url):
 def main():
     print("💀 Zombie Bot Rising...")
     
-    # 1. Fetch Trends (Stealth Mode)
+    # 1. Fetch Reliable Tech Trends
     trends = get_trending_topics()
     random.shuffle(trends)
     
@@ -152,18 +141,16 @@ def main():
     final_filename = None
     
     for raw_topic in trends:
-        # Enhanced Topic Logic
-        if len(raw_topic.split()) > 6: 
-             topic_title = f"Review: {raw_topic}"
-        elif any(x in raw_topic.lower() for x in ['top', 'best', 'vs', 'review', 'list']):
-             topic_title = f"Guide: {raw_topic} Explained"
-        else:
-             topic_title = f"How to Fix {raw_topic} Error"
+        # Title Logic
+        if len(raw_topic.split()) > 7: topic_title = f"Review: {raw_topic}"
+        elif any(x in raw_topic.lower() for x in ['top', 'best', 'vs', 'list']): topic_title = f"Guide: {raw_topic} Explained"
+        else: topic_title = f"How to Fix {raw_topic} Error"
 
         check_filename = clean_filename(topic_title)
         
+        # 2. Duplicate Check
         if os.path.exists(check_filename):
-            print(f"⚠️ Duplicate Found: {check_filename}")
+            print(f"⚠️ Duplicate: {check_filename}")
             continue
         else:
             selected_topic = topic_title
@@ -171,7 +158,7 @@ def main():
             break
     
     if not selected_topic:
-        print("❌ No fresh topics found.")
+        print("❌ No fresh topics found. Exiting.")
         exit(0)
 
     print(f"🎯 Target Locked: {selected_topic}")
@@ -180,6 +167,12 @@ def main():
     
     if article_md:
         article_html = markdown.markdown(article_md)
+        
+        # --- NEW: VIRAL SOCIAL TAGS ---
+        random_img_id = random.randint(1, 1000)
+        # Random tech image for social preview
+        social_image = f"https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&q=80" 
+
         full_html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -187,19 +180,43 @@ def main():
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>{selected_topic}</title>
+            
+            <meta property="og:title" content="{selected_topic}">
+            <meta property="og:description" content="Quick guide and solution. Read more...">
+            <meta property="og:image" content="{social_image}">
+            <meta property="og:type" content="article">
+            <meta name="twitter:card" content="summary_large_image">
+
             <style>
-                body {{ font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; }}
-                h1 {{ color: #d32f2f; }}
-                .ad-box {{ background: #e8f5e9; border: 2px solid #4caf50; padding: 20px; text-align: center; margin: 30px 0; }}
-                .btn {{ background: #d32f2f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+                body {{ font-family: sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.6; }}
+                h1 {{ color: #2c3e50; }}
+                img {{ max-width: 100%; border-radius: 8px; }}
+                .ad-box {{ background: #f0fdf4; border: 2px solid #22c55e; padding: 20px; text-align: center; margin: 30px 0; border-radius: 8px; }}
+                .btn {{ background: #dc2626; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; margin-top: 10px; }}
+                .btn:hover {{ background: #b91c1c; }}
             </style>
         </head>
         <body>
-            <a href="index.html">← Back</a>
-            <div class="ad-box"><h3>⚠️ Action Required</h3><a href="{AD_LINK}" class="btn">▶ START SCAN</a></div>
+            <a href="index.html">← Back to Home</a>
+            
+            <h1>{selected_topic}</h1>
+            
+            <div class="ad-box">
+                <h3>⚠️ Action Required</h3>
+                <p>We found potential issues related to this error.</p>
+                <a href="{AD_LINK}" class="btn">▶ RUN DIAGNOSTIC SCAN</a>
+            </div>
+
             {article_html}
-            <div class="ad-box"><h3>⬇️ Download Fix</h3><a href="{AD_LINK}" class="btn">DOWNLOAD</a></div>
-            <p><small>{datetime.now().strftime("%Y-%m-%d")}</small></p>
+
+            <div class="ad-box">
+                <h3>⬇️ Download Fix</h3>
+                <p>Get the necessary files to repair your system.</p>
+                <a href="{AD_LINK}" class="btn">DOWNLOAD NOW</a>
+            </div>
+            
+            <hr>
+            <p><small>Updated: {datetime.now().strftime("%Y-%m-%d")}</small></p>
         </body>
         </html>
         """
