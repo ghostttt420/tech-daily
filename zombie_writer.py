@@ -233,8 +233,8 @@ def main():
     if article_md:
         # 3. HTML Conversion
         article_html = markdown.markdown(article_md)
-        filename = topic.lower().replace(" ", "-").replace("?", "").replace("/", "")[:50] + ".html"
-        
+        clean_name = topic.lower().replace(":", "").replace("’", "").replace("'", "")
+filename = clean_name.replace(" ", "-").replace("?", "").replace("/", "")[:50] + ".html"
         # 4. Create Page with Ad Injection
         full_html = f"""
         <!DOCTYPE html>
