@@ -3,21 +3,28 @@ import os
 import json
 import time
 import markdown
-import requests  # Standard requests for Gemini/Dev.to
-from curl_cffi import requests as crequests  # Stealth browser for Google
+import requests
+from curl_cffi import requests as crequests
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
 # --- CONFIGURATION ---
 REPO_NAME = "tech-daily"
 GITHUB_USERNAME = os.environ.get('GITHUB_REPOSITORY_OWNER')
+
+# 1. YOUR BUTTON LINK (The "Download" Button)
 AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1cd51effc10b"
+
+# 2. YOUR NEW AD SCRIPT (Popunders / Banners)
+# Paste your script from Adsterra/Monetag between the triple quotes """ below.
+# If you don't have one yet, leave it empty.
+EXTRA_AD_SCRIPT = """
+<script src="https://pl28512527.effectivegatecpm.com/1a/33/5b/1a335b7b5ff20ae1334e705bc03993aa.js"></script>
+"""
 
 # --- 1. STEALTH TREND FETCHER ---
 def get_trending_topics():
     print("🕵️ Attempting Stealth Connection...")
-    
-    # 1. Try Google Internal API (Chrome Impersonation)
     try:
         url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
         r = crequests.get(url, impersonate="chrome110", timeout=15)
@@ -35,7 +42,6 @@ def get_trending_topics():
     except Exception as e:
         print(f"⚠️ Google Failed: {e}")
 
-    # 2. Fallback to Tech News RSS
     print("🔌 Switching to Backup Feeds...")
     sources = [
         "https://www.theverge.com/rss/index.xml",
@@ -105,12 +111,8 @@ def clean_filename(topic):
     return clean.replace(" ", "-").replace("?", "").replace("/", "")[:50] + ".html"
 
 def update_homepage_rebuild():
-    """Scans the folder and completely rebuilds index.html to fix design & duplicates"""
     index_path = "index.html"
-    
-    # Scan for all HTML files (excluding system files)
     all_files = [f for f in os.listdir('.') if f.endswith('.html') and f not in ['index.html', '404.html']]
-    # Sort by newest
     all_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
     
     cards_html = ""
@@ -155,6 +157,7 @@ def update_homepage_rebuild():
             .card-link {{ text-decoration: none; color: inherit; }}
             .read-btn {{ display: inline-block; margin-top: auto; text-decoration: none; background: var(--primary); color: white; padding: 10px 20px; border-radius: 6px; text-align: center; font-weight: 600; }}
         </style>
+        {EXTRA_AD_SCRIPT}
     </head>
     <body>
         <div class="hero">
@@ -194,17 +197,13 @@ def post_to_devto(title, content, original_url):
 # --- MAIN EXECUTION ---
 def main():
     print("💀 Zombie Bot Rising...")
-    
-    # 1. Fetch & Shuffle Topics
     trends = get_trending_topics()
     random.shuffle(trends)
     
     selected_topic = None
     final_filename = None
     
-    # 2. Find a Non-Duplicate Topic
     for raw_topic in trends:
-        # Title Logic
         if len(raw_topic.split()) > 7: topic_title = f"Review: {raw_topic}"
         elif any(x in raw_topic.lower() for x in ['top', 'best', 'vs', 'list']): topic_title = f"Guide: {raw_topic} Explained"
         else: topic_title = f"How to Fix {raw_topic} Error"
@@ -212,7 +211,7 @@ def main():
         check_filename = clean_filename(topic_title)
         
         if os.path.exists(check_filename):
-            print(f"⚠️ Duplicate exists: {check_filename}")
+            print(f"⚠️ Duplicate: {check_filename}")
             continue
         else:
             selected_topic = topic_title
@@ -220,20 +219,16 @@ def main():
             break
     
     if not selected_topic:
-        print("❌ No fresh topics found. Exiting.")
-        # Optional: Force a rebuild of homepage even if no new content
+        print("❌ No fresh topics found.")
         update_homepage_rebuild()
         exit(0)
 
     print(f"🎯 Target Locked: {selected_topic}")
     
-    # 3. Generate Content
     article_md = get_gemini_article(selected_topic)
     
     if article_md:
         article_html = markdown.markdown(article_md)
-        
-        # Social Image (Viral Tag)
         social_image = f"https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&q=80" 
 
         full_html = f"""
@@ -246,6 +241,7 @@ def main():
             <meta property="og:title" content="{selected_topic}">
             <meta property="og:image" content="{social_image}">
             <meta property="og:type" content="article">
+            {EXTRA_AD_SCRIPT}
             <style>
                 body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.6; }}
                 h1 {{ color: #0f172a; }}
@@ -279,18 +275,11 @@ def main():
         """
         
         with open(final_filename, "w") as f: f.write(full_html)
-        
-        # 4. Rebuild Homepage & Update Sitemap
         update_homepage_rebuild()
         update_sitemap(final_filename)
-        
-        # 5. Mirror
         original_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/{final_filename}"
         post_to_devto(selected_topic, article_md, original_url)
-        
         print(f"✅ Published: {final_filename}")
 
 if __name__ == "__main__":
     main()
-
-# force update
