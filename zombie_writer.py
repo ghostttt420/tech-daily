@@ -13,17 +13,18 @@ REPO_NAME = "tech-daily"
 GITHUB_USERNAME = os.environ.get('GITHUB_REPOSITORY_OWNER')
 AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1cd51effc10b"
 
-# POP-UNDER AD SCRIPT
+# POP-UNDER AD SCRIPT + GOOGLE VERIFICATION
+# (Your Google Verification tag is optional here if you already verified, 
+# but keeping your Ad script is required for revenue)
 EXTRA_AD_SCRIPT = """
 <script src="https://pl28512527.effectivegatecpm.com/1a/33/5b/1a335b7b5ff20ae1334e705bc03993aa.js"></script>
-<meta name="google-site-verification" content="SEDgnZk0oQshc0PmWrzbpSiA04cVzbF2kwS07JEYZVI"/>
 """
 
 # --- 1. CLEAN CONTENT FETCHER ---
 def get_trending_topics():
     print("🕵️ Hunting for Tech Topics...")
     
-    # Try Google Internal API
+    # Try Google Internal API (Stealth Mode)
     try:
         url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
         r = crequests.get(url, impersonate="chrome110", timeout=15)
@@ -97,7 +98,9 @@ def update_homepage():
     list_items = ""
     for f in files:
         clean_title = f.replace("-", " ").replace(".html", "").title()
+        # Clean up prefixes for display
         clean_title = clean_title.replace("Guide ", "Guide: ").replace("Solved ", "Solved: ")
+        
         date_str = datetime.fromtimestamp(os.path.getmtime(f)).strftime("%b %d, %Y")
         
         list_items += f"""
@@ -167,11 +170,17 @@ def main():
         clean = raw.strip()
         if any(bad in clean.lower() for bad in ignore): continue
         
+        # Title Logic
         if "?" in clean or "why" in clean.lower(): title = f"Solved: {clean}"
         elif len(clean.split()) < 4: title = f"How to Fix {clean} Error"
         else: title = f"Guide: {clean}"
         
-        fname = title.lower().replace(":", "").replace("?", "").replace("/", "").replace("'", "")
+        # --- THE FIX: AGGRESSIVE CLEANING ---
+        # 1. Replace "&" with "and" to prevent XML crashes (CRITICAL FIX)
+        fname = title.lower().replace("&", "and")
+        # 2. Remove other illegal file characters
+        fname = fname.replace(":", "").replace("?", "").replace("/", "").replace("'", "").replace('"', "")
+        # 3. Final formatting
         fname = fname.replace(" ", "-")[:70] + ".html"
         
         if not os.path.exists(fname):
@@ -224,7 +233,7 @@ def main():
         
         with open(final_filename, "w") as f: f.write(full_page)
         
-        # UPDATE BOTH HOMEPAGE AND SITEMAP
+        # Update both homepage and sitemap
         update_homepage()
         update_sitemap(final_filename)
         print(f"✅ Published: {final_filename}")
