@@ -24,6 +24,8 @@ AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1
 EXTRA_AD_SCRIPT = """
 <script src="https://pl28512527.effectivegatecpm.com/1a/33/5b/1a335b7b5ff20ae1334e705bc03993aa.js"></script>
 <meta name="google-site-verification" content="SEDgnZk0oQshc0PmWrzbpSiA04cVzbF2kwS07JEYZVI"/>
+<link rel="icon" href="https://github.githubassets.com/favicons/favicon.svg"/>
+
 """
 
 # --- 1. CLEAN CONTENT FETCHER ---
