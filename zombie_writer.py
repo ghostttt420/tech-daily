@@ -4,16 +4,23 @@ import json
 import time
 import markdown
 import requests
-from curl_cffi import requests as crequests
 import xml.etree.ElementTree as ET
 from datetime import datetime
+
+# --- SAFE IMPORT GUARD ---
+try:
+    from curl_cffi import requests as crequests
+    STEALTH_MODE = True
+except ImportError:
+    STEALTH_MODE = False
+    print("⚠️ curl_cffi not found. Running in standard mode.")
 
 # --- CONFIGURATION ---
 REPO_NAME = "tech-daily"
 GITHUB_USERNAME = os.environ.get('GITHUB_REPOSITORY_OWNER')
 AD_LINK = "https://www.effectivegatecpm.com/r7dzfzj7k3?key=149604651f31a5a4ab1b1cd51effc10b"
 
-# POP-UNDER AD SCRIPT
+# POP-UNDER AD SCRIPT + GOOGLE VERIFICATION
 EXTRA_AD_SCRIPT = """
 <script src="https://pl28512527.effectivegatecpm.com/1a/33/5b/1a335b7b5ff20ae1334e705bc03993aa.js"></script>
 <meta name="google-site-verification" content="SEDgnZk0oQshc0PmWrzbpSiA04cVzbF2kwS07JEYZVI"/>
@@ -23,21 +30,21 @@ EXTRA_AD_SCRIPT = """
 def get_trending_topics():
     print("🕵️ Hunting for Tech Topics...")
     
-    # Try Google Internal API
-    try:
-        url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
-        r = crequests.get(url, impersonate="chrome110", timeout=15)
-        if r.status_code == 200:
-            data = json.loads(r.text.replace(")]}',\n", ""))
-            trends = []
-            for day in data.get('default', {}).get('trendingSearchesDays', []):
-                for search in day.get('trendingSearches', []):
-                    query = search.get('title', {}).get('query')
-                    if query: trends.append(query)
-            if trends: return trends
-    except: pass
+    if STEALTH_MODE:
+        try:
+            url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
+            r = crequests.get(url, impersonate="chrome110", timeout=15)
+            if r.status_code == 200:
+                data = json.loads(r.text.replace(")]}',\n", ""))
+                trends = []
+                for day in data.get('default', {}).get('trendingSearchesDays', []):
+                    for search in day.get('trendingSearches', []):
+                        query = search.get('title', {}).get('query')
+                        if query: trends.append(query)
+                if trends: return trends
+        except Exception as e:
+            print(f"⚠️ Google Trends skipped: {e}")
 
-    # Backup Sources
     sources = [
         "https://www.theverge.com/rss/index.xml",
         "https://feeds.feedburner.com/TechCrunch/",
@@ -65,7 +72,6 @@ def get_gemini_article(title):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key: return None
     
-    # Dynamic Model Selection
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     try:
         models = requests.get(url).json().get('models', [])
@@ -92,17 +98,39 @@ def get_gemini_article(title):
 def update_homepage():
     index_path = "index.html"
     files = [f for f in os.listdir('.') if f.endswith('.html') and f not in ['index.html', '404.html']]
-    files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    
+    # NEW LOGIC: Read the actual date from inside the file content
+    file_data = []
+    for f in files:
+        date_str = datetime.now().strftime("%b %d, %Y") # Fallback
+        dt_obj = datetime.now()
+        
+        try:
+            with open(f, "r", encoding="utf-8") as file_read:
+                content = file_read.read()
+                # Find the string between 'Posted on ' and '</div>'
+                marker = '<div class="meta">Posted on '
+                if marker in content:
+                    extracted = content.split(marker)[1].split('</div>')[0]
+                    date_str = extracted
+                    # Create object for sorting
+                    dt_obj = datetime.strptime(date_str, "%b %d, %Y")
+        except: pass
+        
+        file_data.append({'filename': f, 'date_display': date_str, 'dt_object': dt_obj})
+
+    # Sort by the REAL date (Newest first)
+    file_data.sort(key=lambda x: x['dt_object'], reverse=True)
     
     list_items = ""
-    for f in files:
+    for item in file_data:
+        f = item['filename']
         clean_title = f.replace("-", " ").replace(".html", "").title()
         clean_title = clean_title.replace("Guide ", "Guide: ").replace("Solved ", "Solved: ")
-        date_str = datetime.fromtimestamp(os.path.getmtime(f)).strftime("%b %d, %Y")
         
         list_items += f"""
         <div class="post-item">
-            <span class="post-date">{date_str}</span>
+            <span class="post-date">{item['date_display']}</span>
             <a href="{f}" class="post-link">{clean_title}</a>
         </div>
         """
@@ -171,12 +199,8 @@ def main():
         elif len(clean.split()) < 4: title = f"How to Fix {clean} Error"
         else: title = f"Guide: {clean}"
         
-        # --- THE FIX: AGGRESSIVE CLEANING ---
-        # 1. Replace "&" with "and" to prevent XML crashes (CRITICAL)
         fname = title.lower().replace("&", "and")
-        # 2. Remove other illegal file characters
         fname = fname.replace(":", "").replace("?", "").replace("/", "").replace("'", "").replace('"', "")
-        # 3. Final formatting
         fname = fname.replace(" ", "-")[:70] + ".html"
         
         if not os.path.exists(fname):
@@ -195,6 +219,7 @@ def main():
     if content:
         html_content = markdown.markdown(content)
         
+        # Added CANONICAL TAG here to fix your Google duplicate error
         full_page = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -202,6 +227,7 @@ def main():
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>{selected_topic}</title>
+            <link rel="canonical" href="https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/{final_filename}" />
             {EXTRA_AD_SCRIPT}
             <style>
                 body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.6; }}
@@ -228,8 +254,6 @@ def main():
         """
         
         with open(final_filename, "w") as f: f.write(full_page)
-        
-        # UPDATE BOTH HOMEPAGE AND SITEMAP
         update_homepage()
         update_sitemap(final_filename)
         print(f"✅ Published: {final_filename}")
