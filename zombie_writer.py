@@ -28,6 +28,31 @@ EXTRA_AD_SCRIPT = """
 
 """
 
+# --- HELPER: SMART TITLE SHORTENING ---
+def create_smart_slug(title, max_length=65):
+    """Creates SEO-friendly slug that doesn't cut mid-word"""
+    # Remove prefix for slug
+    slug = title.lower()
+    for prefix in ["guide:", "solved:", "how to fix", "guide ", "solved "]:
+        slug = slug.replace(prefix.lower(), "").strip()
+    
+    # Clean special characters
+    slug = slug.replace("&", "and").replace(":", "").replace("?", "")
+    slug = slug.replace("/", "").replace("'", "").replace('"', "")
+    slug = slug.replace("—", "-").replace("–", "-")
+    
+    # Convert to slug format
+    slug = "-".join(slug.split())
+    
+    # If still too long, cut at last complete word
+    if len(slug) > max_length:
+        slug = slug[:max_length]
+        # Cut at last hyphen to avoid mid-word break
+        if "-" in slug:
+            slug = slug.rsplit("-", 1)[0]
+    
+    return slug + ".html"
+
 # --- 1. CLEAN CONTENT FETCHER ---
 def get_trending_topics():
     print("🕵️ Hunting for Tech Topics...")
@@ -106,40 +131,45 @@ def update_homepage():
     for f in files:
         date_str = datetime.now().strftime("%b %d, %Y") # Fallback
         dt_obj = datetime.now()
+        display_title = f.replace("-", " ").replace(".html", "").title()
 
         try:
             with open(f, "r", encoding="utf-8") as file_read:
                 content = file_read.read()
-                # Find the string between 'Posted on ' and '</div>'
+                
+                # Extract date
                 marker = '<div class="meta">Posted on '
                 if marker in content:
                     extracted = content.split(marker)[1].split('</div>')[0]
                     date_str = extracted
-                    # Create object for sorting
                     dt_obj = datetime.strptime(date_str, "%b %d, %Y")
+                
+                # Extract actual title from <h1> tag for better display
+                if '<h1>' in content:
+                    display_title = content.split('<h1>')[1].split('</h1>')[0]
         except: pass
 
-        file_data.append({'filename': f, 'date_display': date_str, 'dt_object': dt_obj})
+        file_data.append({
+            'filename': f, 
+            'date_display': date_str, 
+            'dt_object': dt_obj,
+            'title': display_title
+        })
 
     # Sort by the REAL date (Newest first)
     file_data.sort(key=lambda x: x['dt_object'], reverse=True)
 
     list_items = ""
     for item in file_data:
-        f = item['filename']
-        clean_title = f.replace("-", " ").replace(".html", "").title()
-        clean_title = clean_title.replace("Guide ", "Guide: ").replace("Solved ", "Solved: ")
-
         list_items += f"""
         <div class="post-item">
             <span class="post-date">{item['date_display']}</span>
-            <a href="{f}" class="post-link">{clean_title}</a>
+            <a href="{item['filename']}" class="post-link">{item['title']}</a>
         </div>
-        """
+"""
 
-    # FIXED: Added canonical tag for homepage
-    html = f"""
-    <!DOCTYPE html>
+    # Added canonical tag for homepage
+    html = f"""<!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -176,11 +206,11 @@ def update_sitemap(filename):
     base_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/"
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # FIXED: Now includes proper base URL with tech-daily path
+    # Now includes proper base URL with tech-daily path
     new_url = f"<url><loc>{base_url}{filename}</loc><lastmod>{today}</lastmod></url>"
 
     if not os.path.exists(sitemap_path):
-        # FIXED: Add index.html to initial sitemap
+        # Add index.html to initial sitemap
         index_url = f"<url><loc>{base_url}</loc><lastmod>{today}</lastmod></url>"
         content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{index_url}{new_url}</urlset>'
     else:
@@ -203,13 +233,16 @@ def main():
         clean = raw.strip()
         if any(bad in clean.lower() for bad in ignore): continue
 
-        if "?" in clean or "why" in clean.lower(): title = f"Solved: {clean}"
-        elif len(clean.split()) < 4: title = f"How to Fix {clean} Error"
-        else: title = f"Guide: {clean}"
+        # Create display title
+        if "?" in clean or "why" in clean.lower(): 
+            title = f"Solved: {clean}"
+        elif len(clean.split()) < 4: 
+            title = f"How to Fix {clean} Error"
+        else: 
+            title = f"Guide: {clean}"
 
-        fname = title.lower().replace("&", "and")
-        fname = fname.replace(":", "").replace("?", "").replace("/", "").replace("'", "").replace('"', "")
-        fname = fname.replace(" ", "-")[:70] + ".html"
+        # Create clean filename using smart slug function
+        fname = create_smart_slug(title)
 
         if not os.path.exists(fname):
             selected_topic = title
@@ -227,9 +260,8 @@ def main():
     if content:
         html_content = markdown.markdown(content)
 
-        # FIXED: Canonical now includes full path with /tech-daily/
-        full_page = f"""
-        <!DOCTYPE html>
+        # Canonical now includes full path with /tech-daily/
+        full_page = f"""<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
