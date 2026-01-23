@@ -31,7 +31,7 @@ EXTRA_AD_SCRIPT = """
 # --- 1. CLEAN CONTENT FETCHER ---
 def get_trending_topics():
     print("🕵️ Hunting for Tech Topics...")
-    
+
     if STEALTH_MODE:
         try:
             url = "https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
@@ -53,7 +53,7 @@ def get_trending_topics():
         "https://www.wired.com/feed/rss"
     ]
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
-    
+
     all_trends = []
     for rss_url in sources:
         try:
@@ -66,14 +66,14 @@ def get_trending_topics():
                     if title is None: title = item.find('{http://www.w3.org/2005/Atom}title')
                     if title is not None and title.text: all_trends.append(title.text)
         except: continue
-        
+
     return all_trends if all_trends else ["Android System WebView Crash"]
 
 # --- 2. AI WRITER ---
 def get_gemini_article(title):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key: return None
-    
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     try:
         models = requests.get(url).json().get('models', [])
@@ -87,10 +87,10 @@ def get_gemini_article(title):
     - Structure: H1 Title, Introduction, 3 Common Causes, Step-by-Step Fix, Conclusion.
     - Tone: Direct and professional.
     """
-    
+
     url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={api_key}"
     payload = { "contents": [{"parts": [{"text": prompt}]}] }
-    
+
     try:
         r = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
         return r.json()['candidates'][0]['content']['parts'][0]['text']
@@ -100,13 +100,13 @@ def get_gemini_article(title):
 def update_homepage():
     index_path = "index.html"
     files = [f for f in os.listdir('.') if f.endswith('.html') and f not in ['index.html', '404.html']]
-    
-    # NEW LOGIC: Read the actual date from inside the file content
+
+    # Read the actual date from inside the file content
     file_data = []
     for f in files:
         date_str = datetime.now().strftime("%b %d, %Y") # Fallback
         dt_obj = datetime.now()
-        
+
         try:
             with open(f, "r", encoding="utf-8") as file_read:
                 content = file_read.read()
@@ -118,18 +118,18 @@ def update_homepage():
                     # Create object for sorting
                     dt_obj = datetime.strptime(date_str, "%b %d, %Y")
         except: pass
-        
+
         file_data.append({'filename': f, 'date_display': date_str, 'dt_object': dt_obj})
 
     # Sort by the REAL date (Newest first)
     file_data.sort(key=lambda x: x['dt_object'], reverse=True)
-    
+
     list_items = ""
     for item in file_data:
         f = item['filename']
         clean_title = f.replace("-", " ").replace(".html", "").title()
         clean_title = clean_title.replace("Guide ", "Guide: ").replace("Solved ", "Solved: ")
-        
+
         list_items += f"""
         <div class="post-item">
             <span class="post-date">{item['date_display']}</span>
@@ -137,6 +137,7 @@ def update_homepage():
         </div>
         """
 
+    # FIXED: Added canonical tag for homepage
     html = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -144,6 +145,7 @@ def update_homepage():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Tech Fix Database</title>
+        <link rel="canonical" href="https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/" />
         {EXTRA_AD_SCRIPT}
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 680px; margin: 40px auto; padding: 20px; color: #333; line-height: 1.6; }}
@@ -173,10 +175,14 @@ def update_sitemap(filename):
     sitemap_path = "sitemap.xml"
     base_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/"
     today = datetime.now().strftime("%Y-%m-%d")
-    new_url = f"<url><loc>{base_url}{filename}</loc><lastmod>{today}</lastmod></url>"
     
+    # FIXED: Now includes proper base URL with tech-daily path
+    new_url = f"<url><loc>{base_url}{filename}</loc><lastmod>{today}</lastmod></url>"
+
     if not os.path.exists(sitemap_path):
-        content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{new_url}</urlset>'
+        # FIXED: Add index.html to initial sitemap
+        index_url = f"<url><loc>{base_url}</loc><lastmod>{today}</lastmod></url>"
+        content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{index_url}{new_url}</urlset>'
     else:
         with open(sitemap_path, "r") as f: content = f.read()
         if filename in content: return
@@ -188,40 +194,40 @@ def main():
     print("💀 Zombie Bot Rising...")
     trends = get_trending_topics()
     random.shuffle(trends)
-    
+
     ignore = ["deal", "sale", "off", "coupon", "mattress", "pillow", "fashion", "recipe", "movie", "review for"]
     selected_topic = None
     final_filename = None
-    
+
     for raw in trends:
         clean = raw.strip()
         if any(bad in clean.lower() for bad in ignore): continue
-        
+
         if "?" in clean or "why" in clean.lower(): title = f"Solved: {clean}"
         elif len(clean.split()) < 4: title = f"How to Fix {clean} Error"
         else: title = f"Guide: {clean}"
-        
+
         fname = title.lower().replace("&", "and")
         fname = fname.replace(":", "").replace("?", "").replace("/", "").replace("'", "").replace('"', "")
         fname = fname.replace(" ", "-")[:70] + ".html"
-        
+
         if not os.path.exists(fname):
             selected_topic = title
             final_filename = fname
             break
-            
+
     if not selected_topic:
         print("❌ No valid topics. Rebuilding index.")
         update_homepage()
         exit(0)
 
     print(f"🎯 Writing: {selected_topic}")
-    
+
     content = get_gemini_article(selected_topic)
     if content:
         html_content = markdown.markdown(content)
-        
-        # Added CANONICAL TAG here to fix your Google duplicate error
+
+        # FIXED: Canonical now includes full path with /tech-daily/
         full_page = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -254,7 +260,7 @@ def main():
         </body>
         </html>
         """
-        
+
         with open(final_filename, "w") as f: f.write(full_page)
         update_homepage()
         update_sitemap(final_filename)
