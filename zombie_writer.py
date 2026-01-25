@@ -206,18 +206,35 @@ def update_sitemap(filename):
     base_url = f"https://{GITHUB_USERNAME}.github.io/{REPO_NAME}/"
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # Now includes proper base URL with tech-daily path
-    new_url = f"<url><loc>{base_url}{filename}</loc><lastmod>{today}</lastmod></url>"
+    # Create properly formatted URL entry
+    new_url = f"""  <url>
+    <loc>{base_url}{filename}</loc>
+    <lastmod>{today}</lastmod>
+  </url>"""
 
     if not os.path.exists(sitemap_path):
-        # Add index.html to initial sitemap
-        index_url = f"<url><loc>{base_url}</loc><lastmod>{today}</lastmod></url>"
-        content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{index_url}{new_url}</urlset>'
+        # Create new sitemap with homepage and first article
+        index_url = f"""  <url>
+    <loc>{base_url}</loc>
+    <lastmod>{today}</lastmod>
+  </url>"""
+        
+        content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{index_url}
+{new_url}
+</urlset>"""
     else:
-        with open(sitemap_path, "r") as f: content = f.read()
-        if filename in content: return
-        if "</urlset>" in content: content = content.replace("</urlset>", new_url + "</urlset>")
-    with open(sitemap_path, "w") as f: f.write(content)
+        with open(sitemap_path, "r") as f: 
+            content = f.read()
+        if filename in content: 
+            return
+        # Insert new URL before closing tag
+        if "</urlset>" in content: 
+            content = content.replace("</urlset>", new_url + "\n</urlset>")
+    
+    with open(sitemap_path, "w") as f: 
+        f.write(content)
 
 # --- MAIN LOOP ---
 def main():
